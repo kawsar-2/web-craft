@@ -1,0 +1,54 @@
+/* Editor mode styles */
+.webcraft-edit-wrapper {
+  position: relative;
+}
+
+.webcraft-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(59, 130, 246, 0.1);
+  border: 2px dashed rgba(59, 130, 246, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+[data-editable="true"]:hover .webcraft-edit-overlay {
+  opacity: 1;
+}
+
+[data-editable="true"]:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+[data-editable="image"] {
+  position: relative;
+  transition: opacity 0.2s;
+}
+
+[data-editable="image"]:hover {
+  opacity: 0.8;
+}
+
+.webcraft-image-edit-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+
+[data-editable="image"]:hover .webcraft-image-edit-button {
+  opacity: 1;
+}
