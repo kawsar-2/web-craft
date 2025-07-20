@@ -1,13 +1,15 @@
-import React from 'react';
-import { useDroppable } from '@dnd-kit/core';
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useBuilderStore } from '../store';
-import { DraggableComponent } from './DraggableComponent';
+import { useDroppable } from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useBuilderStore } from "../store";
+import { DraggableComponent } from "./DraggableComponent";
 
 export const Canvas = () => {
   const components = useBuilderStore((state) => state.components);
   const { setNodeRef } = useDroppable({
-    id: 'canvas',
+    id: "canvas",
   });
 
   return (

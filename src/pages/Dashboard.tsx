@@ -47,7 +47,11 @@ export const Dashboard = () => {
         type,
         content: "",
         props:
-          type === "navbar" || type === "dropdown" ? { items: [] } : undefined,
+          type === "navbar" || type === "dropdown"
+            ? { items: [] }
+            : type === "heading" || type === "paragraph" || type === "button"
+            ? { fontSize: 16, color: "#000000" } // Add default color for text components
+            : undefined,
       };
       addComponent(newComponent);
     } else if (over.id !== active.id) {
@@ -89,13 +93,25 @@ export const Dashboard = () => {
     const componentToHTML = (component: any) => {
       switch (component.type) {
         case "heading":
-          return `<h1 style="font-size: ${component.props?.fontSize || 16}px">${
+          return `<h1 style="font-size: ${
+            component.props?.fontSize || 16
+          }px; color: ${component.props?.color || "#000000"};">${
             component.content
           }</h1>`;
         case "paragraph":
-          return `<p style="font-size: ${component.props?.fontSize || 16}px">${
+          return `<p style="font-size: ${
+            component.props?.fontSize || 16
+          }px; color: ${component.props?.color || "#000000"};">${
             component.content
           }</p>`;
+        case "button":
+          return `<button style="font-size: ${
+            component.props?.fontSize || 16
+          }px; color: ${
+            component.props?.color || "#000000"
+          }; padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px; background-color: ${
+            component.props?.backgroundColor || "#f8f9fa"
+          };">${component.content}</button>`;
         case "image":
           return `<img src="${component.content}" alt="Content" style="max-width: 100%; height: auto;">`;
         case "youtube":

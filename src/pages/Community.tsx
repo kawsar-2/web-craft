@@ -1,6 +1,15 @@
-import React, { useState, useEffect } from "react";
-import { MessageSquare, Heart, Share2, AlertCircle } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import {
+  MessageSquare,
+  Heart,
+  Share2,
+  AlertCircle,
+  Upload,
+  X,
+} from "lucide-react";
 import { supabase } from "../lib/supabase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { storage } from "../config/firebase";
 
 interface Post {
   id: string;
@@ -26,6 +35,14 @@ export const Community = () => {
   const [shareImage, setShareImage] = useState("");
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+
+  // Add image upload states
+  const [shareImageFile, setShareImageFile] = useState<File | null>(null);
+  const [shareImagePreview, setShareImagePreview] = useState<string | null>(
+    null
+  );
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Add modal state for comments
   const [showCommentsModal, setShowCommentsModal] = useState(false);
@@ -106,36 +123,128 @@ export const Community = () => {
     setLoading(false);
   };
 
-  // Share post handler
+  // Handle image file selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        setShareError("Image must be less than 5MB");
+        return;
+      }
+
+      if (!file.type.startsWith("image/")) {
+        setShareError("Please select an image file");
+        return;
+      }
+
+      setShareImageFile(file);
+      setShareError(null);
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setShareImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Remove selected image
+  const removeSelectedImage = () => {
+    setShareImageFile(null);
+    setShareImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  // Upload image to Supabase Storage instead
+  const uploadImageToSupabase = async (file: File): Promise<string> => {
+    try {
+      const timestamp = Date.now();
+      const fileName = `${timestamp}-${file.name.replace(
+        /[^a-zA-Z0-9.-]/g,
+        "_"
+      )}`;
+      const filePath = `post-images/${fileName}`;
+
+      console.log("Uploading to Supabase Storage:", filePath);
+
+      const { data, error } = await supabase.storage
+        .from("post-image") // Changed from "post-images" to "post-image"
+        .upload(filePath, file);
+
+      if (error) {
+        throw error;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("post-image") // Changed from "post-images" to "post-image"
+        .getPublicUrl(filePath);
+
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error("Supabase Storage upload error:", error);
+      throw new Error(
+        `Upload failed: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
+  };
+
+  // Update the share handler to use Supabase
   const handleShare = async () => {
     setShareError(null);
-    if (!shareTitle.trim() || !shareDescription.trim() || !shareImage.trim()) {
-      setShareError("All fields are required.");
+    if (!shareTitle.trim() || !shareDescription.trim()) {
+      setShareError("Title and description are required.");
       return;
     }
+
+    if (!shareImageFile) {
+      setShareError("Please select an image for your post.");
+      return;
+    }
+
     setShareLoading(true);
+    setUploadingImage(true);
+
     try {
+      // Upload image to Supabase Storage
+      const imageUrl = await uploadImageToSupabase(shareImageFile);
+
+      setUploadingImage(false);
+
+      // Create the post
       const { error } = await supabase.from("posts").insert([
         {
           title: shareTitle,
           description: shareDescription,
-          preview_image: shareImage,
+          preview_image: imageUrl,
           user_id: authUser.id,
-          likes: 0,
-          comments: 0,
         },
       ]);
+
       if (error) {
-        setShareError(error.message);
+        setShareError(`Database error: ${error.message}`);
       } else {
+        // Reset form
         setShowShareModal(false);
         setShareTitle("");
         setShareDescription("");
-        setShareImage("");
+        setShareImageFile(null);
+        setShareImagePreview(null);
+        setShareError(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         fetchPosts();
       }
     } catch (err: any) {
       setShareError(err.message || "Failed to share post.");
+      setUploadingImage(false);
     }
     setShareLoading(false);
   };
@@ -261,16 +370,74 @@ export const Community = () => {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-8"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="bg-white rounded-lg shadow-sm p-4">
-                <div className="h-48 bg-gray-200 rounded mb-4"></div>
-                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+        <div className="flex justify-between items-center mb-8">
+          <div className="h-9 bg-gray-200 rounded-lg w-64 animate-pulse"></div>
+          <div className="h-10 bg-gray-200 rounded-lg w-32 animate-pulse"></div>
+        </div>
+
+        {/* Modern loading animation */}
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="relative">
+            {/* Outer spinning ring */}
+            <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+            {/* Inner pulsing dot */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
+            </div>
+          </div>
+          <div className="mt-4 text-gray-600 font-medium">
+            Loading community posts...
+          </div>
+          <div className="mt-2 text-sm text-gray-400">
+            Fetching the latest content from creators
+          </div>
+        </div>
+
+        {/* Skeleton cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div
+              key={i}
+              className="bg-white rounded-lg shadow-sm overflow-hidden"
+            >
+              {/* Image skeleton */}
+              <div className="h-48 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-pulse"></div>
+              <div className="p-4">
+                {/* Title skeleton */}
+                <div className="h-6 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-3/4 mb-3 animate-pulse"></div>
+                {/* Description skeleton */}
+                <div className="space-y-2 mb-4">
+                  <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-pulse"></div>
+                  <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-5/6 animate-pulse"></div>
+                </div>
+                {/* Actions skeleton */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-12 animate-pulse"></div>
+                    <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-12 animate-pulse"></div>
+                  </div>
+                  <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-4 animate-pulse"></div>
+                </div>
               </div>
-            ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Loading dots animation */}
+        <div className="flex justify-center items-center mt-8">
+          <div className="flex space-x-2">
+            <div
+              className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+              style={{ animationDelay: "0ms" }}
+            ></div>
+            <div
+              className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+              style={{ animationDelay: "150ms" }}
+            ></div>
+            <div
+              className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+              style={{ animationDelay: "300ms" }}
+            ></div>
           </div>
         </div>
       </div>
@@ -325,50 +492,143 @@ export const Community = () => {
         </button>
       </div>
 
-      {/* Share Modal */}
+      {/* Share Modal (Updated with image upload) */}
       {showShareModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-lg max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Share Your Work</h2>
             {shareError && (
-              <div className="mb-2 text-red-600 text-sm">{shareError}</div>
+              <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+                {shareError}
+              </div>
             )}
-            <input
-              className="w-full mb-3 p-2 border rounded"
-              placeholder="Title"
-              value={shareTitle}
-              onChange={(e) => setShareTitle(e.target.value)}
-              disabled={shareLoading}
-            />
-            <textarea
-              className="w-full mb-3 p-2 border rounded"
-              placeholder="Description"
-              value={shareDescription}
-              onChange={(e) => setShareDescription(e.target.value)}
-              disabled={shareLoading}
-              rows={3}
-            />
-            <input
-              className="w-full mb-3 p-2 border rounded"
-              placeholder="Image URL"
-              value={shareImage}
-              onChange={(e) => setShareImage(e.target.value)}
-              disabled={shareLoading}
-            />
-            <div className="flex justify-end gap-2">
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title *
+                </label>
+                <input
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter a title for your work"
+                  value={shareTitle}
+                  onChange={(e) => setShareTitle(e.target.value)}
+                  disabled={shareLoading}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description *
+                </label>
+                <textarea
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Describe your work"
+                  value={shareDescription}
+                  onChange={(e) => setShareDescription(e.target.value)}
+                  disabled={shareLoading}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Image *
+                </label>
+
+                {!shareImagePreview ? (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                      disabled={shareLoading}
+                    />
+                    <Upload className="mx-auto h-12 w-12 text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500 mb-2">
+                      Click to upload an image or drag and drop
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      PNG, JPG, GIF up to 5MB
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={shareLoading}
+                      className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:bg-gray-400"
+                    >
+                      Choose File
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <img
+                      src={shareImagePreview}
+                      alt="Preview"
+                      className="w-full h-48 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeSelectedImage}
+                      disabled={shareLoading}
+                      className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full hover:bg-red-700 disabled:bg-gray-400"
+                    >
+                      <X size={16} />
+                    </button>
+                    <div className="mt-2 text-sm text-gray-600">
+                      {shareImageFile?.name}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
               <button
-                className="px-4 py-2 bg-gray-200 rounded"
-                onClick={() => setShowShareModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:bg-gray-100"
+                onClick={() => {
+                  setShowShareModal(false);
+                  setShareTitle("");
+                  setShareDescription("");
+                  setShareImageFile(null);
+                  setShareImagePreview(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = "";
+                  }
+                }}
                 disabled={shareLoading}
               >
                 Cancel
               </button>
               <button
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-blue-300 flex items-center"
                 onClick={handleShare}
-                disabled={shareLoading}
+                disabled={
+                  shareLoading ||
+                  !shareTitle.trim() ||
+                  !shareDescription.trim() ||
+                  !shareImageFile
+                }
               >
-                {shareLoading ? "Sharing..." : "Share"}
+                {shareLoading ? (
+                  <>
+                    {uploadingImage ? (
+                      <>
+                        <Upload className="w-4 h-4 mr-2 animate-pulse" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Sharing...
+                      </>
+                    )}
+                  </>
+                ) : (
+                  "Share"
+                )}
               </button>
             </div>
           </div>

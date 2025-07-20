@@ -1,8 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getStorage } from "firebase/storage";
 
-// Your Firebase configuration
-// Replace these values with your actual Firebase project configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBpOl0omIJnpELy_Gc7NNxqCVFRulsfAOA",
   authDomain: "webcraft-cb011.firebaseapp.com",
@@ -13,6 +11,6 @@ const firebaseConfig = {
   measurementId: "G-BS64FJGMKC",
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const storage = getStorage(app);
+export default app;
